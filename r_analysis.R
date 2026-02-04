@@ -11,7 +11,9 @@ merged_milk_df <- read.csv("/home/rajesh/work/ketosis_project/files/processed_fi
 
 # ==============================
 
-merged_milk_df$ketotic <- ifelse(merged_milk_df$Serum.BHB..mmol.L. > 1, 1, 0)
+merged_milk_df$ketotic <- ifelse(merged_milk_df$Serum.BHB..mmol.L. > 0.8, 1, 0)
+
+
 
 # 1. Fit linear mixed effect model for milk BHB vs breath acetone 
 # ==============================
@@ -291,5 +293,51 @@ ggplot(roc_df, aes(x = fpr, y = tpr)) +
   theme_minimal(base_size = 14)
 
 
+
+## plotting descriptive data
+# Prepare data
+plot_df <- merged_milk_df %>%
+  select(
+    ketotic,
+    Breath.Acetone..ppm.,
+    Milk.Acetone..mM.L.,
+    Milk.BHB..mM.L.,
+    Serum.NEFA..meEq.L.
+  ) %>%
+  pivot_longer(
+    cols = -ketotic,
+    names_to = "Biomarker",
+    values_to = "Value"
+  )
+
+# Plot
+ggplot(plot_df, aes(x = factor(ketotic), y = Value)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.3, size = 1) +
+  facet_wrap(
+    ~ Biomarker,
+    scales = "free_y",
+    labeller = labeller(
+      Biomarker = c(
+        `Breath.Acetone..ppm.` = "Breath acetone (ppm)",
+        `Milk.Acetone..mM.L.`  = "Milk acetone (mM)",
+        `Milk.BHB..mM.L.`      = "Milk BHB (mM)",
+        `Serum.NEFA..meEq.L.`  = "Serum NEFA (mEq/L)"
+      )
+    )
+  ) +
+  scale_x_discrete(
+    labels = c("0" = "Subclinical negative", "1" = "Subclinical positive")
+  ) +
+  labs(
+    x = "Subclinical ketosis status",
+    y = "Concentration",
+    title = "Biomarker distributions by subclinical ketosis status"
+  ) +
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "grey90"),
+    strip.text = element_text(face = "bold")
+  )
 
 
