@@ -341,3 +341,144 @@ ggplot(plot_df, aes(x = factor(ketotic), y = Value)) +
   )
 
 
+###Counting unique cow id with the ketotic thing
+library(dplyr)
+
+merged_milk_df %>%
+  group_by(ketotic) %>%
+  summarise(n_unique_cows = n_distinct(cowid))
+
+
+
+################################
+# ============================================================
+# 0. Libraries
+# ============================================================
+library(lme4)
+library(performance)   # r2()
+library(ggplot2)
+library(patchwork)
+
+# ============================================================
+# 1. Global theme (bigger fonts)
+# ============================================================
+big_theme <- theme_classic(base_size = 12) +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 10),
+    axis.text  = element_text(size = 10)
+  )
+
+# ============================================================
+# 2. Function to fit LMM + return ggplot
+# ============================================================
+make_lmm_plot <- function(df, x, y, ylab, title) {
+  
+  # Mixed model
+  form <- as.formula(paste0("`", y, "` ~ `", x, "` + (1 | cowid)"))
+  model <- lmer(form, data = df)
+  
+  # Fixed effects
+  coefs <- fixef(model)
+  intercept <- round(coefs[1], 4)
+  slope <- round(coefs[2], 4)
+  
+  # R²
+  r2_vals <- r2(model)
+  r2_marg <- round(r2_vals$R2_marginal, 3)
+  r2_cond <- round(r2_vals$R2_conditional, 3)
+  
+  # P-value
+  p_val <- summary(model)$coefficients[x, "Pr(>|t|)"]
+  p_txt <- ifelse(p_val < 0.001, "<0.001", round(p_val, 3))
+  
+  # Annotations
+  annot_text <- paste0(
+    "Marginal R² = ", r2_marg,
+    "\nConditional R² = ", r2_cond,
+    "\nP-value = ", p_txt
+  )
+  
+  eq_text <- paste0("y = ", slope, "x + ", intercept)
+  
+  # Plot
+  ggplot(df, aes_string(x = x, y = y)) +
+    geom_point(alpha = 0.4, size = 1) +
+    geom_smooth(method = "lm", color = "red", se = FALSE, linewidth = 1) +
+    labs(
+      title = title,
+      x = "Breath Acetone (ppm)",
+      y = ylab
+    ) +
+    annotate(
+      "text",
+      x = max(df[[x]], na.rm = TRUE) * 0.65,
+      y = max(df[[y]], na.rm = TRUE) * 0.80,
+      label = annot_text,
+      size = 5,
+      hjust = 0
+    ) +
+    annotate(
+      "text",
+      x = max(df[[x]], na.rm = TRUE) * 0.65,
+      y = max(df[[y]], na.rm = TRUE) * 0.45,
+      label = eq_text,
+      size = 5,
+      hjust = 0,
+      fontface = "bold"
+    ) +
+    big_theme
+}
+
+# ============================================================
+# 3. Create individual plots
+# ============================================================
+p1 <- make_lmm_plot(
+  merged_milk_df,
+  x = "Breath.Acetone..ppm.",
+  y = "Milk.BHB..mM.L.",
+  ylab = "Milk BHB (mM/L)",
+  title = "Milk BHB vs Breath Acetone"
+)
+
+p2 <- make_lmm_plot(
+  merged_milk_df,
+  x = "Breath.Acetone..ppm.",
+  y = "Serum.BHB..mmol.L.",
+  ylab = "Serum BHB (mM/L)",
+  title = "Serum BHB vs Breath Acetone"
+)
+
+p3 <- make_lmm_plot(
+  merged_milk_df,
+  x = "Breath.Acetone..ppm.",
+  y = "Milk.Acetone..mM.L.",
+  ylab = "Milk Acetone (mM/L)",
+  title = "Milk Acetone vs Breath Acetone"
+)
+
+p4 <- make_lmm_plot(
+  merged_milk_df,
+  x = "Breath.Acetone..ppm.",
+  y = "Serum.NEFA..meEq.L.",
+  ylab = "Serum NEFA (mEq/L)",
+  title = "Serum NEFA vs Breath Acetone"
+)
+
+# ============================================================
+# 4. Combine into 2×2 panel with tags (A–D)
+# ============================================================
+final_plot <- (p1 | p2) /
+  (p3 | p4) +
+  plot_annotation(
+    tag_levels = "A",
+    theme = theme(
+      plot.tag = element_text(size = 20, face = "bold")
+    )
+  )
+
+# ============================================================
+# 5. Print
+# ============================================================
+final_plot
+
