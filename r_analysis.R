@@ -482,3 +482,114 @@ final_plot <- (p1 | p2) /
 # ============================================================
 final_plot
 
+
+library(dplyr)
+library(lubridate)
+
+df <- merged_milk_df
+
+# Ensure date format
+df$date <- as.Date(df$date)
+
+# -----------------------------
+# 1. Basic summary
+# -----------------------------
+n_cows <- n_distinct(df$cowid)
+n_obs  <- nrow(df)
+
+cat("=== BASIC SUMMARY ===\n")
+cat("Total cows:", n_cows, "\n")
+cat("Total observations:", n_obs, "\n")
+cat("Average samples per cow:", round(n_obs / n_cows, 2), "\n")
+
+# -----------------------------
+# 2. Samples per cow
+# -----------------------------
+samples_per_cow <- df %>%
+  group_by(cowid) %>%
+  summarise(n_samples = n(), .groups = "drop")
+
+cat("\n=== SAMPLES PER COW DISTRIBUTION ===\n")
+print(table(samples_per_cow$n_samples))
+
+cat("\nSummary stats:\n")
+print(summary(samples_per_cow$n_samples))
+
+# -----------------------------
+# 3. Repeated measures cows
+# -----------------------------
+repeated_cows <- samples_per_cow %>% filter(n_samples > 1)
+
+cat("\n=== REPEATED MEASURES ===\n")
+cat("Cows with repeated samples:", nrow(repeated_cows), "\n")
+cat("Percentage:", round(nrow(repeated_cows) / n_cows * 100, 1), "%\n")
+
+# -----------------------------
+# 4. Time between samples
+# -----------------------------
+df <- df %>%
+  arrange(cowid, date) %>%
+  group_by(cowid) %>%
+  mutate(days_between_samples = as.numeric(difftime(date, lag(date), units = "days"))) %>%
+  ungroup()
+
+cat("\n=== DAYS BETWEEN SAMPLES ===\n")
+print(summary(df$days_between_samples))
+
+cat("\nDistribution:\n")
+print(table(df$days_between_samples, useNA = "ifany"))
+
+# -----------------------------
+# 5. DIM variation
+# -----------------------------
+dim_per_cow <- df %>%
+  group_by(cowid) %>%
+  summarise(
+    min_DIM = min(DIM, na.rm = TRUE),
+    max_DIM = max(DIM, na.rm = TRUE),
+    n_DIM   = n_distinct(DIM),
+    DIM_range = max_DIM - min_DIM,
+    .groups = "drop"
+  )
+
+cat("\n=== DIM VARIATION ===\n")
+print(summary(dim_per_cow$DIM_range))
+
+multi_dim <- dim_per_cow %>% filter(n_DIM > 1)
+cat("Cows with multiple DIM points:", nrow(multi_dim), "\n")
+
+# -----------------------------
+# 6. Ketosis distribution
+# -----------------------------
+cat("\n=== KETOSIS (OBSERVATION LEVEL) ===\n")
+print(table(df$ketotic))
+
+cow_ketosis <- df %>%
+  group_by(cowid) %>%
+  summarise(ketotic_cow = max(ketotic, na.rm = TRUE), .groups = "drop")
+
+cat("\n=== KETOSIS (COW LEVEL) ===\n")
+print(table(cow_ketosis$ketotic_cow))
+
+# -----------------------------
+# 7. Sampling order
+# -----------------------------
+df <- df %>%
+  arrange(cowid, date) %>%
+  group_by(cowid) %>%
+  mutate(sampling_order = row_number()) %>%
+  ungroup()
+
+cat("\n=== SAMPLE ORDER PREVIEW ===\n")
+print(head(df %>% select(cowid, date, sampling_order)))
+
+# -----------------------------
+# 8. Export summary table
+# -----------------------------
+summary_table <- samples_per_cow %>%
+  left_join(dim_per_cow %>% select(cowid, DIM_range), by = "cowid")
+
+write.csv(summary_table, "sampling_summary.csv", row.names = FALSE)
+
+cat("\nSummary table saved as 'sampling_summary.csv'\n")
+
